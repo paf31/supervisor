@@ -7,7 +7,8 @@ A simple ptrace-based supervisor. Use at your own risk.
 - Enforce memory, CPU time and file handle limits
 - Define syscall policies in multiple profiles
 
-Usage:
+Usage
+=====
 
     supervisor <options> command args
     
@@ -32,6 +33,13 @@ In debug mode (make debug):
     Not allowed.
 
 System call 49 (bind) was blocked by the default profile.
+
+Profiles
+========
+
+Profiles are simple text files containing simple instructions.
+
+Each line contains with a letter and a system call ID. A line beginnning with the letter `a` defines an allowed system call. A line beginning with the letter `i` defines an ignored system call. An attempt to call any other system call terminates execution of the supervised executable. Ignored system calls are skipped.
 
 License
 =======
