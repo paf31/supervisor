@@ -1,6 +1,6 @@
 /**
 
-supervisor.c - A simple ptrace-based supervisor
+supervisor.c - A simple ptrace-based supervisor. Use at your own risk.
 
 e.g.
 sudo ./supervisor -u root -r / -w / -p profiles/default.profile /usr/bin/wget http://github.com
