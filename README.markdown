@@ -10,17 +10,17 @@ A simple ptrace-based supervisor. Use at your own risk.
 Usage:
 
     supervisor <options> command args
-
-Options:
-
-- -m limit - Set the memory limit in mb
-- -t limit - Set the time limit in seconds
-- -f limit - Set the file size limit in bytes
-- -F limit - Set the file count limit
-- -r dir - Set the chroot jail directory; required
-- -w dir - Set the working directory; required
-- -u user - Set the name of the executing user; required
-- -p file - Set the policy file; required
+    
+    Options:
+    
+    -m limit    - Set the memory limit in mb
+    -t limit    - Set the time limit in seconds
+    -f limit    - Set the file size limit in bytes
+    -F limit    - Set the file count limit
+    -r dir      - Set the chroot jail directory; required
+    -w dir      - Set the working directory; required
+    -u user     - Set the name of the executing user; required
+    -p file     - Set the policy file; required
 
 Example
 =======
