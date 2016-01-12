@@ -1,13 +1,6 @@
 /**
 
-supervisor.c - A simple ptrace-based supervisor. Use at your own risk.
-
-e.g.
-sudo ./supervisor -u root -r / -w / -p profiles/default.profile /usr/bin/wget http://github.com
-Resolving github.com... System call 49 was blocked.
-Not allowed.
-
-Copyright (c) 2012 Phil Freeman
+Copyright (c) 2012, 2015 Phil Freeman
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -50,25 +43,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <stdbool.h>
  
-#define PTRACE_O_TRACEFORK	 0x00000002
-#define PTRACE_O_TRACEVFORK	0x00000004
-#define PTRACE_O_TRACECLONE	0x00000008
-#define PTRACE_O_TRACEEXEC	 0x00000010
-#define PTRACE_O_TRACEVFORKDONE 0x00000020
-#define PTRACE_O_TRACEEXIT	 0x00000040
-
-#define PTRACE_O_MASK		 0x0000007f
-
-#define PTRACE_EVENT_FORK	  1
-#define PTRACE_EVENT_VFORK	 2
-#define PTRACE_EVENT_CLONE	 3
-#define PTRACE_EVENT_EXEC	  4
-#define PTRACE_EVENT_VFORK_DONE 5
-#define PTRACE_EVENT_EXIT	  6
-
-#define SYSCALL_ALLOWED		1
-#define SYSCALL_IGNORED		2
-
 int pid = 0;
 
 int timeLimit;
@@ -82,10 +56,6 @@ char* workingDir;
 
 char* command;
 char** commandArgs;
-
-char* policyFile;
-
-char syscalls[303];
 
 void readCmdArgs(int argc, char** args) {
 	int i = 1;
@@ -101,8 +71,6 @@ void readCmdArgs(int argc, char** args) {
 	user = NULL;
 	chrootDir = NULL;
  
-	policyFile = NULL;
-
 	command = NULL;
 	commandArgs = NULL;
 
@@ -136,9 +104,6 @@ void readCmdArgs(int argc, char** args) {
 			case 'u':
 				user = value;
 				break;
-			case 'p':
-				policyFile = value;
-				break;
 			default:
 				fputs("Unknown argument.\n", stderr);
 				exit(1);
@@ -167,57 +132,8 @@ void readCmdArgs(int argc, char** args) {
 		exit(1);
 	}
 
-	if (policyFile == NULL) {
-		fputs("Policy file required.\n", stderr);
-		exit(1);
-	}
-
 	command = args[i];
 	commandArgs = args + i;
-}
-
-void readPolicyFile() {
-	FILE *policy;
-
-	char line[10];
-
-	for (int j = 0; j < sizeof(syscalls); j++) {
-		syscalls[j] = 0;
-	}
-
-	if ((policy = fopen(policyFile, "r")) == NULL) {
-		fputs("Unable to open policy file.\n", stderr);
-		fflush(stderr);
-		exit(1);
-	}
-
-	while (fgets(line, sizeof(line), policy) != NULL)
-	{
-		if (strlen(line) < 3) {
-			fputs("Invalid line in policy.\n", stderr);
-			fflush(stderr);
-			fclose(policy);
-			exit(1);
-		}
-
-		switch (line[0]) {
-			case 'a':
-			case 'A':
-				syscalls[atoi(&line[2])] = SYSCALL_ALLOWED;
-				break;
-			case 'i':
-			case 'I':
-				syscalls[atoi(&line[2])] = SYSCALL_IGNORED;
-				break;
-			default:
-				fputs("Invalid instruction in policy.\n", stderr);
-				fflush(stderr);
-				fclose(policy);
-				exit(1);
-		}
-	} 
-	
-	fclose(policy);  
 }
 
 void kill_and_exit(const char* msg) {
@@ -261,75 +177,11 @@ void setResourceLimits() {
 	}
 }
 
-void handle_syscall(int pid) {
-	bool handled = false;
-
-	struct user_regs_struct regs;
-
-	if (ptrace(PTRACE_GETREGS, pid, NULL, &regs) != 0) { 
-		kill_and_exit("Unable to read application registers.\n");
-	}
-
-	unsigned long int syscall = regs.orig_rax;
-
-	if (syscall >= 0 && syscall < sizeof(syscalls)) {
-		switch (syscalls[syscall]) {
-			case SYSCALL_ALLOWED:
-				if (ptrace(PTRACE_SYSCALL, pid, 0, 0) != 0) {
-					kill_and_exit("Unable to continue exection after an allowed system call.\n");
-				}
-	
-				handled = true;
-	
-				break;
-			case SYSCALL_IGNORED:
-				regs.rax = 0;
-				regs.orig_rax = SYS_getpid;
-	
-				if (ptrace(PTRACE_SETREGS, pid, NULL, &regs) != 0) {
-					kill_and_exit("Unable to modify application registers.\n");
-				}
-	
-				if (ptrace(PTRACE_SYSCALL, pid, 0, 0) != 0) {
-					kill_and_exit("Unable to continue execution after an ignored system call.\n");
-				}
-	
-				handled = true;
-	
-				break;
-			default:
-#ifdef DEBUG
-				printf("System call %ld was blocked.\n", syscall);
-#endif
-				break;
-		}
-	} else {
-#ifdef DEBUG
-		printf("Unknown syscall %ld.\n", syscall);
-#endif
-	}
-
-
-	if (!handled) {
-		if (ptrace(PTRACE_KILL, pid, 0, 0) != 0) {
-			kill_and_exit("Unable to kill the process.\n");
-		}
-
-		kill_and_exit("Not allowed.\n");
-	}
-}
-
 int main(int argc, char** args) { 
 	readCmdArgs(argc, args);
 
-	readPolicyFile();
-
 	if ((pid = fork()) == 0) {
 		// Child process
-
-		if (ptrace(PTRACE_TRACEME, 0, 0, 0) != 0) {
-			kill_and_exit("Unable to trace execution.\n");
-		}
 
 		setResourceLimits();
 
@@ -363,18 +215,12 @@ int main(int argc, char** args) {
 		// Wait for execve
 		wait(&status);
 
-		if (ptrace(PTRACE_SYSCALL, pid, 0, 0) != 0) {
-			kill_and_exit("Unable to continue execution after exec.\n");
-		}
-
 		while(1) { 
 			wait(&status);
 
 			if (WIFEXITED(status)) {
 				break;
 			}
-
-			handle_syscall(pid); 
 		}
 	}
 
